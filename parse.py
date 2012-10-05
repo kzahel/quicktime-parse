@@ -19,7 +19,8 @@ import struct
 import sys
 import time
 
-NAMES = {
+NAMES = { # not used for anything, but just documents a short blurb
+          # about what these things mean
     "vmhd": "video information media header",
     "mvhd": 'movie header',
     "tkhd": 'track header',
@@ -37,7 +38,7 @@ NAMES = {
 }
 
 CONTAINER_ATOMS = ["moov", "trak", "mdia", "minf","dinf","stbl"]
-_IGNORE_ATOMS = ["iods"]
+_IGNORE_ATOMS = ["iods"] # couldn't find documentation for this
 _ATOMS = {
     "pnot": (12, "I2x4s2x",
              ("Modification time", "Atom type"),
@@ -134,11 +135,15 @@ class Mov(object):
         with open(self._fn, "rb") as self._f:
             self._parse(fsize)
 
+    def _f_read(self,l):
+        print('reading '+str(l))
+        return self._f.read(l)
+
     def _parse(self, length, depth=0):
         prefix = "  "*depth + "- "
         n = 0
         while n < length:
-            data = self._f.read(8)
+            data = self._f_read(8)
             #print(len(data), data)
             al, an = struct.unpack(">I4s", data)
             an = an.decode()
@@ -157,10 +162,16 @@ class Mov(object):
             elif an in _VARIABLE_CHAINED_ATOMS:
                 self._parse_atom(an, al-8, depth, chained=True)
             elif an in _IGNORE_ATOMS:
-                self._f.read(al-8)
+                self._f_read(al-8)
             else:
                 print('unhandled thingie',al,an)
-                self._f.read(al-8)
+                if al == 1:
+                    # 64 bit!
+                    print("64 bit header!")
+                    al = struct.unpack(">Q", self._f_read(8))[0]
+                    self._f_read(al-16)
+                else:
+                    self._f_read(al-8)
             n += al
 
     def _parse_atom(self, atom, length, depth, variable=False, chained=False):
@@ -174,7 +185,7 @@ class Mov(object):
             
         pos = self._f.tell()
         prefix = "  "*depth + "  | "
-        data = self._f.read(length)
+        data = self._f_read(length)
         if variable:
             v = struct.unpack(">"+spec[1], data[:spec[0]])
         elif chained:
@@ -203,19 +214,19 @@ class Mov(object):
 
     def _read_ftyp(self, length, depth):
         prefix = "  "*depth + "  | "
-        data = self._f.read(8)
+        data = self._f_read(8)
         brand, version = struct.unpack(">4sI", data)
         brand = brand.decode("latin1")
         print("{}Brand: {}, version: {}".format(prefix, brand, version))
-        self._f.read(length-8)
+        self._f_read(length-8)
 
     def _parse_udta(self, length, depth):
         prefix = "  "*depth + "  | "
         n = 0
         while n < length:
-            atom_size, data_type = struct.unpack(">I4s", self._f.read(8))
+            atom_size, data_type = struct.unpack(">I4s", self._f_read(8))
             data_type = data_type.decode("latin1")
-            raw = self._f.read(atom_size-8)
+            raw = self._f_read(atom_size-8)
             if data_type[0] == "©":
                 print("{}{}: {}".format(prefix, data_type, raw[3:].decode()))
             else:
